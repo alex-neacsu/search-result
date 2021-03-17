@@ -1,18 +1,18 @@
 import type { ComponentType } from 'react'
 import React, { useMemo, useContext } from 'react'
+import { VariableSizeGrid as Grid } from 'react-window'
 import classNames from 'classnames'
 // eslint-disable-next-line no-restricted-imports
 import { splitEvery } from 'ramda'
 import { useDevice } from 'vtex.device-detector'
 import { ProductListContext } from 'vtex.product-list-context'
 import { useResponsiveValue } from 'vtex.responsive-values'
-import { useCssHandles } from 'vtex.css-handles'
-import { useRuntime } from 'vtex.render-runtime'
+import { applyModifiers, useCssHandles } from 'vtex.css-handles'
 import { Spinner } from 'vtex.styleguide'
 import type { MaybeResponsiveInput } from 'vtex.responsive-values'
 
 import withResizeDetector from './components/withResizeDetector'
-import GalleryRow from './components/GalleryRow'
+import GalleryItem from './components/GalleryItem'
 import ProductListEventCaller from './utils/ProductListEventCaller'
 import SettingsContext from './components/SettingsContext'
 import type { Product } from './Gallery'
@@ -20,9 +20,7 @@ import type { Product } from './Gallery'
 /** Layout with one column */
 const ONE_COLUMN_LAYOUT = 1
 
-const LAZY_RENDER_THRESHOLD = 2
-
-const CSS_HANDLES = ['gallery'] as const
+const CSS_HANDLES = ['gallery', 'galleryItem'] as const
 
 const { ProductListProvider } = ProductListContext
 
@@ -63,7 +61,6 @@ const Gallery: React.FC<GalleryProps> = ({
   const { isMobile } = useDevice()
   const { trackingId = 'Search result' } = useContext(SettingsContext) || {}
   const handles = useCssHandles(CSS_HANDLES)
-  const { getSettings } = useRuntime()
   const responsiveMaxItemsPerRow = useResponsiveValue(maxItemsPerRow)
 
   const layoutMode = isMobile ? mobileLayoutMode : 'normal'
@@ -105,25 +102,54 @@ const Gallery: React.FC<GalleryProps> = ({
     }
   )
 
-  const isLazyRenderEnabled = getSettings('vtex.store')
-    ?.enableSearchRenderingOptimization
-
   return (
     <ProductListProvider listName={trackingId}>
       <div className={galleryClasses}>
-        {rows.map((rowProducts, index) => (
-          <GalleryRow
-            key={index}
-            products={rowProducts}
-            lazyRender={isLazyRenderEnabled && index >= LAZY_RENDER_THRESHOLD}
-            summary={summary}
-            displayMode={layoutMode}
-            itemsPerRow={itemsPerRow}
-            rowIndex={index}
-            customSummaryInterval={customSummaryInterval}
-            CustomSummary={CustomSummary}
-          />
-        ))}
+          <Grid
+            columnCount={itemsPerRow}
+            columnWidth={() => 1000 / itemsPerRow}
+            height={1000}
+            rowCount={rows.length}
+            rowHeight={() => 500}
+            width={1000}
+          >
+            {({ rowIndex, columnIndex, style }) => {
+              const product = rows[rowIndex][columnIndex]
+
+              const absoluteProductIndex =
+                rowIndex * itemsPerRow + columnIndex + 1
+
+              const shouldRenderCustom = !!(
+                CustomSummary &&
+                customSummaryInterval &&
+                absoluteProductIndex % customSummaryInterval === 0
+              )
+
+              return (
+                <div
+                  key={product.productId}
+                  style={style}
+                  className={classNames(
+                    applyModifiers(handles.galleryItem, [
+                      layoutMode,
+                      shouldRenderCustom ? 'custom' : '',
+                    ]),
+                    'pa4'
+                  )}
+                >
+                  <GalleryItem
+                    item={product}
+                    summary={summary}
+                    displayMode={layoutMode}
+                    position={rowIndex * itemsPerRow + columnIndex}
+                    CustomSummary={
+                      shouldRenderCustom ? CustomSummary : undefined
+                    }
+                  />
+                </div>
+              )
+            }}
+          </Grid>
         {typeof lazyItemsRemaining === 'number' && lazyItemsRemaining > 0 && (
           <div
             style={{
